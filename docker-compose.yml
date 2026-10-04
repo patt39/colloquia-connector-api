@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+    colloquia-connector_api:
+        container_name: colloquia-connector_api
+        build: .
+        restart: always
+        volumes:
+            - .:/app
+            - /app/node_modules
+        entrypoint: /bin/sh ./scripts/be-node-dev.sh
+        env_file:
+            - ./.env
+        environment:
+            DATABASE_URL: postgresql://postgres:postgres@colloquia-connector_db:5432/colloquia_connector_api?schema=public
+            DIRECT_URL: postgresql://postgres:postgres@colloquia-connector_db:5432/colloquia_connector_api?schema=public
+        ports:
+            - "4800:4800"
+        depends_on:
+            colloquia-connector_db:
+                condition: service_healthy
+
+    colloquia-connector_db:
+        container_name: colloquia-connector_db
+        image: postgres:16-alpine
+        restart: always
+        environment:
+            POSTGRES_DB: colloquia_connector_api
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U postgres -d colloquia_connector_api",
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+volumes:
+    postgres_data:

@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider        = "prisma-client"
+  moduleFormat    = "esm"
+  output          = "./generated/prisma"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+  id          String       @id @default(uuid())
+  email       String       @unique
+  username    String
+  password    String
+  userTenants UserTenant[]
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+}
+
+model Tenant {
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  endDate        DateTime?
+  id             String          @id @default(uuid())
+  name           String
+  userTenants    UserTenant[]
+  users          User[]
+  serviceTenants ServiceTenant[]
+}
+
+model UserTenant {
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  id        String    @id @default(uuid())
+  userId    String
+  tenantId  String
+  role      String?
+  user      User      @relation(fields: [userId], references: [id])
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+}
+
+model ServiceTenant {
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?
+  id                  String          @id @default(uuid())
+  serviceCategory     ServiceCategory
+  voxGentiumServiceId String
+  tenantId            String
+  tenant              Tenant          @relation(fields: [tenantId], references: [id])
+}
+
+enum ServiceCategory {
+  FACE2FACE_VIDEO
+  PHONE_CALL
+  FACE2FACE_PHYSICAL
+  DOCUMENTS_TRADUCTION
+}
