@@ -8,11 +8,6 @@ export const validation_login_cookie_setting = {
   ...cookieSettings,
 };
 
-export const validation_verify_cookie_setting = {
-  maxAge: Number(config.cookie_access.user.accessExpireVerify),
-  ...cookieSettings,
-};
-
 export const expire_cookie_setting = {
   ...cookieSettings,
 };

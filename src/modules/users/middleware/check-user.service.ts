@@ -1,5 +1,5 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { JwtPayload, sign, verify } from 'jsonwebtoken';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { JwtPayload, sign } from 'jsonwebtoken';
 import { config } from '../../../app/config';
 export type JwtToken = {
   userId?: string;
@@ -13,20 +13,16 @@ export type JwtToken = {
 export class CheckUserService {
   constructor() {}
 
-  async createTokenCookie(data: JwtPayload, expiry: string) {
-    return sign(data, config.cookieKey, { expiresIn: Number(expiry) });
-  }
-
-  async verifyTokenCookie(token: string) {
-    const payload = verify(token, config.cookieKey);
-    if (typeof payload == 'string')
-      throw new HttpException(`Token not verified`, HttpStatus.NOT_FOUND);
-    if (!payload) {
-      throw new HttpException(
-        `Token not valid please change`,
-        HttpStatus.NOT_FOUND,
+  async createTokenCookie(data: JwtPayload, expiryMilliseconds: number) {
+    if (!config.cookieKey) {
+      throw new ServiceUnavailableException(
+        'COOKIE_KEY must be configured before issuing login tokens.',
       );
     }
-    return payload;
+    const expirySeconds = Math.floor(expiryMilliseconds / 1000);
+    if (!Number.isFinite(expirySeconds) || expirySeconds < 1) {
+      throw new ServiceUnavailableException('Cookie lifetime is invalid.');
+    }
+    return sign(data, config.cookieKey, { expiresIn: expirySeconds });
   }
 }

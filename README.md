@@ -25,6 +25,27 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Client portal activation
+
+Clients can request portal activation using the email address on their existing
+vTiger Contact. Send `POST /api/v1/auth/portal/activation-requests` with
+`{"email":"client@example.com"}`. The API finds the existing Contact and its
+Account, maps that Account to an existing portal Tenant, and emails an
+activation link. It never creates vTiger Contacts, Accounts, or portal
+Tenants. The endpoint returns the same generic `202 Accepted` response whether
+or not the email is eligible and allows five requests per IP per 15 minutes.
+
+The portal's activation page must read the token from the email link and send
+`POST /api/v1/auth/portal/invitations/accept` with the token and a password
+(12-100 characters). Successful activation creates the portal account and
+tenant membership, then sets the login cookie. For password recovery, call
+`POST /api/v1/auth/portal/password-reset-requests` with the same email body;
+the same acceptance route sets the new password.
+
+Email delivery requires `RESEND_SMTP_API_KEY` and `RESEND_SMTP_EMAIL`. The
+sender address must be authorized by Resend. The API intentionally does not
+return activation or reset tokens to the caller.
+
 ## Project setup
 
 ```bash

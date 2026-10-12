@@ -1,19 +1,23 @@
-export type Env = 'dev';
+export type Env = 'dev' | 'production';
 
-/** Get the correct cookie settings based on environment */
 export const getCookieSettings = (env: string) =>
-  env in settingsMap ? settingsMap[(env as Env) ?? 'dev'] : settingsMap.dev;
+  env === 'production' ? settingsMap.production : settingsMap.dev;
 
 const settingsMap: {
   [Key in Env]: {
-    httpOnly: false;
+    httpOnly: true;
     secure: boolean;
     domain?: string;
     sameSite: 'none' | 'lax' | 'strict';
   };
 } = {
   dev: {
-    httpOnly: false,
+    httpOnly: true,
+    secure: false,
+    sameSite: 'lax',
+  },
+  production: {
+    httpOnly: true,
     secure: true,
     sameSite: 'none',
   },

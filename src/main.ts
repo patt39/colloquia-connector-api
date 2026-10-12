@@ -16,7 +16,10 @@ async function bootstrap() {
   app.enableVersioning({
     type: VersioningType.URI,
   });
-  const withList = ['http://localhost:3000'];
+  const withList = (config.url.allowedOrigins || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
     origin: withList,
     credentials: true,

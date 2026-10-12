@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   IsEmail,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -10,35 +9,47 @@ import {
   MinLength,
 } from 'class-validator';
 
-export class RegisterUserDto {
+export class CreatePortalInvitationDto {
   @IsNotEmpty()
-  @IsString()
-  tenantName: string;
+  @IsUUID()
+  tenantId: string;
 
   @IsNotEmpty()
   @IsString()
-  username: string;
+  @MaxLength(40)
+  vtigerContactId: string;
+}
 
+export class RequestPortalAccessLinkDto {
   @IsNotEmpty()
-  @IsString()
   @IsEmail()
+  @MaxLength(254)
   email: string;
+}
+
+export class AcceptPortalInvitationDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(128)
+  token: string;
 
   @IsNotEmpty()
   @IsString()
-  @MinLength(8)
+  @MinLength(12)
+  @MaxLength(100)
   password: string;
 }
 
-export class UserInvitationConfirmationDto {
+export class ChangePasswordDto {
   @IsNotEmpty()
   @IsString()
-  fullName: string;
+  currentPassword: string;
 
   @IsNotEmpty()
   @IsString()
-  @MinLength(8)
-  password: string;
+  @MinLength(12)
+  @MaxLength(100)
+  newPassword: string;
 }
 
 export class CreateLoginUserDto {
@@ -49,28 +60,6 @@ export class CreateLoginUserDto {
   @IsNotEmpty()
   @IsString()
   @MinLength(8)
-  password: string;
-}
-
-export class AddContributorUserDto {
-  @IsNotEmpty()
-  @IsString()
-  @IsEmail()
-  email: string;
-}
-
-export class ResetPasswordUserDto {
-  @IsNotEmpty()
-  @IsString()
-  @MaxLength(100)
-  @IsEmail()
-  email: string;
-}
-
-export class UpdateResetPasswordUserDto {
-  @IsNotEmpty()
-  @MinLength(8)
-  @IsString()
   password: string;
 }
 

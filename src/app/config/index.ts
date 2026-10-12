@@ -1,5 +1,16 @@
 import * as dotenv from 'dotenv';
+import { randomBytes } from 'node:crypto';
 dotenv.config();
+
+const environment = process.env.NODE_ENV || 'dev';
+const configuredCookieKey = process.env.COOKIE_KEY?.trim();
+const cookieKey =
+  configuredCookieKey ||
+  (environment === 'dev' ? randomBytes(32).toString('hex') : '');
+
+if (environment === 'production' && !cookieKey) {
+  throw new Error('COOKIE_KEY must be configured in production.');
+}
 
 export const config = {
   /**
@@ -13,19 +24,19 @@ export const config = {
   /**
    * Node environment
    */
-  environment: process.env.NODE_ENV || 'dev',
+  environment,
   /**
    * Cookie configuration
    */
 
-  cookieKey: process.env.COOKIE_KEY || '@3%NE8IksyHK4yC5POFurDCAVW@FqxBe',
+  cookieKey,
+  portalProvisioningKey: process.env.PORTAL_PROVISIONING_KEY || '',
+  portalBaseUrl:
+    process.env.PORTAL_BASE_URL || process.env.NODE_CLIENT_URL || '',
   cookie_access: {
     user: {
       nameLogin: process.env.COOKIE_NAME_LOGIN || 'x-user',
-      accessExpireLogin: process.env.COOKIE_ACCESS_EXPIRE || '86400000000',
-      nameVerify: process.env.COOKIE_NAME_LOGIN || 'x-verify-code',
-      accessExpireVerify:
-        process.env.COOKIE_VALIDATION_TOKEN_EXPIRE || '300000000000',
+      accessExpireLogin: process.env.COOKIE_ACCESS_EXPIRE || '86400000',
     },
   },
   /**
@@ -33,10 +44,37 @@ export const config = {
    */
   connector_access: {
     vTiger: {
-      baseUrl: process.env.VTIGER_BASE_URL || 'https://example.com',
-      username: process.env.VTIGER_USERNAME || 'username',
-      password: process.env.VTIGER_PASSWORD || 'password',
+      baseUrl: process.env.VTIGER_BASE_URL || '',
+      username: process.env.VTIGER_USERNAME || '',
+      accessKey: process.env.VTIGER_ACCESS_KEY || '',
+      timeoutMs: Number(process.env.VTIGER_TIMEOUT_MS || 15000),
     },
+  },
+  email: {
+    resendApiKey:
+      process.env.RESEND_SMTP_API_KEY?.trim() ||
+      process.env.RESEND_API_KEY?.trim() ||
+      '',
+    from:
+      process.env.RESEND_SMTP_EMAIL?.trim() ||
+      process.env.EMAIL_FROM?.trim() ||
+      process.env.RESEND_FROM_NO_REPLAY_ADDRESS?.trim() ||
+      '',
+  },
+
+  /**
+   * Resend smtp
+   */
+  resendSMTP: {
+    apiKey:
+      process.env.RESEND_SMTP_API_KEY?.trim() ||
+      process.env.RESEND_API_KEY?.trim() ||
+      '',
+    noReplayFrom:
+      process.env.RESEND_SMTP_EMAIL?.trim() ||
+      process.env.RESEND_FROM_NO_REPLAY_ADDRESS?.trim() ||
+      process.env.EMAIL_FROM?.trim() ||
+      '',
   },
 
   /**

@@ -1,70 +1,177 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider        = "prisma-client"
-  moduleFormat    = "esm"
-  output          = "./generated/prisma"
-  previewFeatures = ["fullTextSearchPostgres"]
+    provider        = "prisma-client"
+    moduleFormat    = "esm"
+    output          = "./generated/prisma"
+    previewFeatures = ["fullTextSearchPostgres"]
 }
 
 datasource db {
-  provider = "postgresql"
+    provider = "postgresql"
 }
 
 model User {
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  deletedAt   DateTime?
-  id          String       @id @default(uuid())
-  email       String       @unique
-  username    String
-  password    String
-  userTenants UserTenant[]
-  tenantId    String
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+    createdAt         DateTime           @default(now())
+    updatedAt         DateTime           @updatedAt
+    deletedAt         DateTime?
+    id                String             @id @default(uuid())
+    email             String             @unique
+    username          String
+    password          String
+    vtigerContactId   String?            @unique
+    userTenants       UserTenant[]
+    serviceRequests   ServiceRequest[]
+    portalInvitations PortalInvitation[]
+    tenantId          String
+    tenant            Tenant             @relation(fields: [tenantId], references: [id])
 }
 
 model Tenant {
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  deletedAt      DateTime?
-  endDate        DateTime?
-  id             String          @id @default(uuid())
-  name           String
-  userTenants    UserTenant[]
-  users          User[]
-  serviceTenants ServiceTenant[]
+    createdAt         DateTime           @default(now())
+    updatedAt         DateTime           @updatedAt
+    deletedAt         DateTime?
+    endDate           DateTime?
+    id                String             @id @default(uuid())
+    name              String
+    vtigerAccountId   String?            @unique
+    userTenants       UserTenant[]
+    users             User[]
+    serviceTenants    ServiceTenant[]
+    serviceRequests   ServiceRequest[]
+    portalInvitations PortalInvitation[]
 }
 
 model UserTenant {
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  id        String    @id @default(uuid())
-  userId    String
-  tenantId  String
-  role      String?
-  user      User      @relation(fields: [userId], references: [id])
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    id        String    @id @default(uuid())
+    userId    String
+    tenantId  String
+    role      String?
+    user      User      @relation(fields: [userId], references: [id])
+    tenant    Tenant    @relation(fields: [tenantId], references: [id])
+
+    @@unique([userId, tenantId])
+}
+
+model PortalInvitation {
+    id              String                  @id @default(uuid())
+    createdAt       DateTime                @default(now())
+    expiresAt       DateTime
+    redeemedAt      DateTime?
+    revokedAt       DateTime?
+    tokenHash       String                  @unique
+    purpose         PortalInvitationPurpose
+    email           String
+    username        String
+    vtigerContactId String
+    tenantId        String
+    userId          String?
+    tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    user            User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    @@index([email, tenantId, purpose])
+    @@index([expiresAt])
 }
 
 model ServiceTenant {
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-  deletedAt           DateTime?
-  id                  String          @id @default(uuid())
-  serviceCategory     ServiceCategory
-  voxGentiumServiceId String
-  tenantId            String
-  tenant              Tenant          @relation(fields: [tenantId], references: [id])
+    createdAt           DateTime         @default(now())
+    updatedAt           DateTime         @updatedAt
+    deletedAt           DateTime?
+    id                  String           @id @default(uuid())
+    serviceCategory     ServiceCategory
+    voxGentiumServiceId String
+    tenantId            String
+    tenant              Tenant           @relation(fields: [tenantId], references: [id])
+    serviceRequests     ServiceRequest[]
+}
+
+model ServiceRequest {
+    id               String                   @id @default(uuid())
+    createdAt        DateTime                 @default(now())
+    updatedAt        DateTime                 @updatedAt
+    tenantId         String
+    userId           String
+    serviceTenantId  String?
+    serviceCategory  ServiceCategory
+    title            String
+    status           ServiceRequestStatus     @default(DRAFT)
+    sourceLanguage   String?
+    targetLanguage   String?
+    requestedFor     DateTime?
+    details          Json?
+    crmSyncStatus    CrmSyncStatus            @default(PENDING)
+    crmRecordId      String?                  @unique
+    crmSyncError     String?
+    crmSyncStartedAt DateTime?
+    crmSyncedAt      DateTime?
+    syncAttempts     Int                      @default(0)
+    idempotencyKey   String?
+    tenant           Tenant                   @relation(fields: [tenantId], references: [id])
+    user             User                     @relation(fields: [userId], references: [id])
+    serviceTenant    ServiceTenant?           @relation(fields: [serviceTenantId], references: [id])
+    documents        ServiceRequestDocument[]
+
+    @@unique([userId, idempotencyKey])
+    @@index([tenantId, createdAt])
+    @@index([userId, createdAt])
+    @@index([crmSyncStatus, createdAt])
+}
+
+model ServiceRequestDocument {
+    id               String               @id @default(uuid())
+    createdAt        DateTime             @default(now())
+    serviceRequestId String
+    vtigerDocumentId String?              @unique
+    idempotencyKey   String?
+    fileSha256       String?
+    originalName     String
+    contentType      String
+    sizeBytes        Int
+    uploadStatus     DocumentUploadStatus @default(PENDING_UPLOAD)
+    uploadedAt       DateTime?
+    relatedAt        DateTime?
+    serviceRequest   ServiceRequest       @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+
+    @@unique([serviceRequestId, idempotencyKey])
+    @@index([serviceRequestId])
+}
+
+enum ServiceRequestStatus {
+    DRAFT
+    SUBMITTED
+    IN_REVIEW
+    QUOTED
+    ACCEPTED
+    IN_PROGRESS
+    COMPLETED
+    CANCELLED
+    REJECTED
+}
+
+enum CrmSyncStatus {
+    PENDING
+    SYNCING
+    SYNCED
+    FAILED
+}
+
+enum DocumentUploadStatus {
+    PENDING_UPLOAD
+    AVAILABLE
+}
+
+enum PortalInvitationPurpose {
+    INVITE
+    PASSWORD_RESET
 }
 
 enum ServiceCategory {
-  FACE2FACE_VIDEO
-  PHONE_CALL
-  FACE2FACE_PHYSICAL
-  DOCUMENTS_TRADUCTION
+    FACE2FACE_VIDEO
+    PHONE_CALL
+    FACE2FACE_PHYSICAL
+    DOCUMENTS_TRADUCTION
 }
