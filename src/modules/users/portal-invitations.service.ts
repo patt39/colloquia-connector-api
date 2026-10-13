@@ -13,8 +13,8 @@ import { Prisma, PortalInvitationPurpose } from '../../app/database/prisma';
 import { config } from '../../app/config';
 import { DatabaseService } from '../../app/database/database.service';
 import { VtigerService } from '../../integrations/vtiger/vtiger.service';
-import { EmailService } from '../../integrations/email.service';
 import { hashPassword } from './users.type';
+import { EmailService } from '../../integrations/email.service';
 
 export interface ProvisionPortalContactInput {
   tenantId: string;
@@ -77,21 +77,28 @@ export class PortalInvitationsService {
           typeof contact.email === 'string' &&
           contact.email.trim().toLocaleLowerCase() === email,
       );
+
       if (matchingContacts.length !== 1) return;
 
       const contact = matchingContacts[0];
       const contactId = this.getRelatedId(contact.id);
       const accountId = this.getRelatedId(contact.account_id);
+
       if (!contactId || !accountId) return;
 
-      const tenant = await this.findTenantForAccount(accountId);
-      if (!tenant) return;
-
+      const tenant = await this.findTenantForAccount(
+        accountId,
+        this.getRelatedName(contact.account_id),
+      );
+      if (!tenant) {
+        return;
+      }
       await this.issueForContact(
         { tenantId: tenant.id, vtigerContactId: contactId },
         purpose,
         undefined,
         false,
+        contact,
       );
     } catch (error) {
       this.logger.error(
@@ -101,49 +108,55 @@ export class PortalInvitationsService {
     }
   }
 
-  private async findTenantForAccount(accountId: string) {
+  private async findTenantForAccount(accountId: string, accountName?: string) {
     const mappedTenant = await this.database.tenant.findFirst({
       where: { vtigerAccountId: accountId, deletedAt: null },
     });
     if (mappedTenant) return mappedTenant;
 
-    const accounts = await this.vtiger.query<unknown>(
-      `select id, accountname from Accounts where id = '${this.escapeQuery(accountId)}';`,
-    );
-    const account = Array.isArray(accounts)
-      ? accounts.find(
-          (item): item is Record<string, unknown> =>
-            this.isRecord(item) && this.getRelatedId(item.id) === accountId,
-        )
-      : undefined;
-    if (
-      !account ||
-      typeof account.accountname !== 'string' ||
-      !account.accountname.trim()
-    ) {
-      return undefined;
+    const normalizedName = accountName?.trim();
+    if (normalizedName) {
+      const matchingTenants = await this.database.tenant.findMany({
+        where: {
+          name: normalizedName,
+          vtigerAccountId: null,
+          deletedAt: null,
+        },
+        take: 2,
+      });
+      if (matchingTenants.length > 1) return undefined;
+
+      if (matchingTenants.length === 1) {
+        const tenant = matchingTenants[0];
+        const mapped = await this.database.tenant.updateMany({
+          where: { id: tenant.id, vtigerAccountId: null, deletedAt: null },
+          data: { vtigerAccountId: accountId },
+        });
+        if (mapped.count === 1) {
+          return { ...tenant, vtigerAccountId: accountId };
+        }
+
+        const concurrentlyMappedTenant = await this.database.tenant.findFirst({
+          where: { vtigerAccountId: accountId, deletedAt: null },
+        });
+        if (concurrentlyMappedTenant) return concurrentlyMappedTenant;
+      }
     }
 
-    const matchingTenants = await this.database.tenant.findMany({
-      where: {
-        name: account.accountname.trim(),
-        vtigerAccountId: null,
-        deletedAt: null,
-      },
-      take: 2,
-    });
-    if (matchingTenants.length !== 1) return undefined;
-
-    const tenant = matchingTenants[0];
-    const mapped = await this.database.tenant.updateMany({
-      where: { id: tenant.id, vtigerAccountId: null, deletedAt: null },
-      data: { vtigerAccountId: accountId },
-    });
-    if (mapped.count === 1) return { ...tenant, vtigerAccountId: accountId };
-
-    return this.database.tenant.findFirst({
-      where: { vtigerAccountId: accountId, deletedAt: null },
-    });
+    try {
+      return await this.database.tenant.create({
+        data: {
+          name: normalizedName || accountId,
+          vtigerAccountId: accountId,
+        },
+      });
+    } catch (error) {
+      const concurrentlyMappedTenant = await this.database.tenant.findFirst({
+        where: { vtigerAccountId: accountId, deletedAt: null },
+      });
+      if (concurrentlyMappedTenant) return concurrentlyMappedTenant;
+      throw error;
+    }
   }
 
   async accept(
@@ -250,6 +263,7 @@ export class PortalInvitationsService {
     purpose: PortalInvitationPurpose,
     suppliedKey?: string,
     requireProvisioningKey = true,
+    verifiedContact?: Record<string, unknown>,
   ) {
     if (requireProvisioningKey) this.assertProvisioningKey(suppliedKey);
     if (!config.portalBaseUrl) {
@@ -263,10 +277,12 @@ export class PortalInvitationsService {
     });
     if (!tenant) throw new NotFoundException('Tenant not found.');
 
-    const contact = await this.vtiger.retrieve<Record<string, unknown>>(
-      'Contacts',
-      input.vtigerContactId,
-    );
+    const contact =
+      verifiedContact ??
+      (await this.vtiger.retrieve<Record<string, unknown>>(
+        'Contacts',
+        input.vtigerContactId,
+      ));
     const email =
       typeof contact.email === 'string'
         ? contact.email.trim().toLocaleLowerCase()
@@ -418,6 +434,15 @@ export class PortalInvitationsService {
     if (!this.isRecord(value)) return undefined;
     if (typeof value.value === 'string') return value.value;
     if (typeof value.id === 'string') return value.id;
+    return undefined;
+  }
+
+  private getRelatedName(value: unknown): string | undefined {
+    if (!this.isRecord(value)) return undefined;
+    for (const key of ['label', 'name', 'accountname']) {
+      const name = value[key];
+      if (typeof name === 'string' && name.trim()) return name.trim();
+    }
     return undefined;
   }
 

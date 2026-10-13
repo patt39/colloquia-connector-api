@@ -2,6 +2,12 @@ import * as dotenv from 'dotenv';
 import { randomBytes } from 'node:crypto';
 dotenv.config();
 
+export enum EnvironmentEnum {
+  Local = 'local',
+  Production = 'production',
+  Dev = 'dev',
+  Demo = 'demo',
+}
 const environment = process.env.NODE_ENV || 'dev';
 const configuredCookieKey = process.env.COOKIE_KEY?.trim();
 const cookieKey =
@@ -75,6 +81,26 @@ export const config = {
       process.env.RESEND_FROM_NO_REPLAY_ADDRESS?.trim() ||
       process.env.EMAIL_FROM?.trim() ||
       '',
+  },
+
+  /**
+   * Site
+   */
+  datasite: {
+    url: process.env.NODE_DASHBOARD_URL,
+    name: process.env.NODE_NAME,
+    email: process.env.MAIL_FROM_ADDRESS,
+    emailNoreply: process.env.MAIL_FROM_NO_REPLAY_ADDRESS,
+  },
+
+  /**
+   * mailSMTP
+   */
+  mailSMTP: {
+    host: process.env.MAIL_HOST,
+    port: Number(process.env.MAIL_PORT),
+    user: process.env.MAIL_USERNAME,
+    pass: process.env.MAIL_PASSWORD,
   },
 
   /**

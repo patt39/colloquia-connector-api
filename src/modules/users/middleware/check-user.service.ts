@@ -1,5 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { JwtPayload, sign } from 'jsonwebtoken';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { config } from '../../../app/config';
 export type JwtToken = {
   userId?: string;
@@ -23,6 +23,6 @@ export class CheckUserService {
     if (!Number.isFinite(expirySeconds) || expirySeconds < 1) {
       throw new ServiceUnavailableException('Cookie lifetime is invalid.');
     }
-    return sign(data, config.cookieKey, { expiresIn: expirySeconds });
+    return jwt.sign(data, config.cookieKey, { expiresIn: expirySeconds });
   }
 }

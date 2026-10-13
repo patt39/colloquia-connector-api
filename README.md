@@ -30,10 +30,12 @@
 Clients can request portal activation using the email address on their existing
 vTiger Contact. Send `POST /api/v1/auth/portal/activation-requests` with
 `{"email":"client@example.com"}`. The API finds the existing Contact and its
-Account, maps that Account to an existing portal Tenant, and emails an
-activation link. It never creates vTiger Contacts, Accounts, or portal
-Tenants. The endpoint returns the same generic `202 Accepted` response whether
-or not the email is eligible and allows five requests per IP per 15 minutes.
+Account, maps the Account to a local portal Tenant (creating that local mapping
+from the existing CRM Account when needed), and emails an activation link. It
+never creates vTiger Contacts or Accounts. The portal User is created only
+after the Contact redeems the email token. The endpoint returns the same generic
+`202 Accepted` response whether or not the email is eligible and allows five
+requests per IP per 15 minutes.
 
 The portal's activation page must read the token from the email link and send
 `POST /api/v1/auth/portal/invitations/accept` with the token and a password
@@ -42,8 +44,14 @@ tenant membership, then sets the login cookie. For password recovery, call
 `POST /api/v1/auth/portal/password-reset-requests` with the same email body;
 the same acceptance route sets the new password.
 
-Email delivery requires `RESEND_SMTP_API_KEY` and `RESEND_SMTP_EMAIL`. The
-sender address must be authorized by Resend. The API intentionally does not
+With `NODE_ENV=dev` or `NODE_ENV=local`, email is captured by Ethereal rather
+than delivered to real inboxes. The API logs an Ethereal preview URL; open it
+to inspect the message and copy its one-time token for API-only testing. Do not
+share that preview URL.
+
+With `NODE_ENV=production`, email is sent through Resend and requires
+`RESEND_SMTP_API_KEY` and `RESEND_SMTP_EMAIL`. The sender address must use a
+domain verified in the same Resend account. The API intentionally does not
 return activation or reset tokens to the caller.
 
 ## Project setup

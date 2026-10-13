@@ -162,14 +162,14 @@ describe('PortalInvitationsService', () => {
     );
   });
 
-  it('maps an unmapped tenant using an Account query instead of Account retrieve', async () => {
+  it('maps an unmapped tenant from the Contact Account reference without querying Accounts', async () => {
     config.portalBaseUrl = 'https://portal.example.test';
     const contact = {
       id: '12x-contact-1',
       email: 'client@example.com',
       firstname: 'Portal',
       lastname: 'Client',
-      account_id: { value: '11x-account-1' },
+      account_id: { value: '11x-account-1', label: 'Client Account' },
     };
     const tenant = {
       id: 'tenant-1',
@@ -181,7 +181,7 @@ describe('PortalInvitationsService', () => {
         findFirst: vi
           .fn()
           .mockResolvedValueOnce(null)
-          .mockResolvedValue(tenant),
+          .mockResolvedValue({ ...tenant, vtigerAccountId: '11x-account-1' }),
         findMany: vi.fn().mockResolvedValue([tenant]),
         update: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -193,15 +193,7 @@ describe('PortalInvitationsService', () => {
       },
     };
     const vtiger = {
-      query: vi
-        .fn()
-        .mockImplementation((query: string) =>
-          Promise.resolve(
-            query.includes('from Contacts')
-              ? [contact]
-              : [{ id: '11x-account-1', accountname: 'Client Account' }],
-          ),
-        ),
+      query: vi.fn().mockResolvedValue([contact]),
       retrieve: vi.fn().mockResolvedValue(contact),
     };
     const emailService = {
@@ -215,15 +207,77 @@ describe('PortalInvitationsService', () => {
 
     await service.requestActivation('client@example.com');
 
-    expect(vtiger.query).toHaveBeenCalledWith(
-      "select id, accountname from Accounts where id = '11x-account-1';",
-    );
-    expect(vtiger.retrieve).toHaveBeenCalledTimes(1);
-    expect(vtiger.retrieve).toHaveBeenCalledWith('Contacts', contact.id);
+    expect(vtiger.query).toHaveBeenCalledTimes(1);
+    expect(vtiger.query.mock.calls[0][0]).toContain('from Contacts');
+    expect(vtiger.retrieve).not.toHaveBeenCalled();
     expect(database.tenant.updateMany).toHaveBeenCalledWith({
       where: { id: tenant.id, vtigerAccountId: null, deletedAt: null },
       data: { vtigerAccountId: '11x-account-1' },
     });
+    expect(emailService.sendPortalAccessLink).toHaveBeenCalled();
+  });
+
+  it('creates a local Tenant from an existing CRM Account when none exists', async () => {
+    config.portalBaseUrl = 'https://portal.example.test';
+    const contact = {
+      id: '12x-contact-1',
+      email: 'client@example.com',
+      firstname: 'Portal',
+      lastname: 'Client',
+      account_id: { value: '11x-account-1', label: 'Client Account' },
+    };
+    const tenant = {
+      id: 'tenant-created-from-crm',
+      name: 'Client Account',
+      vtigerAccountId: '11x-account-1',
+    };
+    const database = {
+      tenant: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue(tenant),
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue(tenant),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      user: { findUnique: vi.fn().mockResolvedValue(null) },
+      portalInvitation: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn().mockResolvedValue({ id: 'invitation-1' }),
+      },
+    };
+    const vtiger = {
+      query: vi.fn().mockResolvedValue([contact]),
+      retrieve: vi.fn().mockResolvedValue(contact),
+    };
+    const emailService = {
+      sendPortalAccessLink: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new PortalInvitationsService(
+      database as never,
+      vtiger as never,
+      emailService as never,
+    );
+
+    await service.requestActivation('client@example.com');
+
+    expect(database.tenant.create).toHaveBeenCalledWith({
+      data: {
+        name: 'Client Account',
+        vtigerAccountId: '11x-account-1',
+      },
+    });
+    expect(database.portalInvitation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tenantId: tenant.id }),
+      }),
+    );
+    expect(database.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'client@example.com' },
+    });
+    expect(database.user).not.toHaveProperty('create');
     expect(emailService.sendPortalAccessLink).toHaveBeenCalled();
   });
 

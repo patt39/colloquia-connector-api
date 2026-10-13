@@ -46,13 +46,6 @@ export class UsersAuthController {
     private readonly portalInvitations: PortalInvitationsService,
   ) {}
 
-  @Post('/auth/register')
-  registerDisabled(): never {
-    throw new GoneException(
-      'Public registration is disabled. Portal access is invitation-only.',
-    );
-  }
-
   @Post('/auth/portal/invitations')
   createInvitation(
     @Body() body: CreatePortalInvitationDto,
