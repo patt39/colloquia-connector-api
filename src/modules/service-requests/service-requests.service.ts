@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -15,9 +14,7 @@ import {
   ServiceRequestStatus,
 } from '../../app/database/prisma';
 import { DatabaseService } from '../../app/database/database.service';
-import { config } from '../../app/config';
 import { VtigerService } from '../../integrations/vtiger/vtiger.service';
-import type { VtigerFile } from '../../integrations/vtiger/vtiger.types';
 import { CreateServiceRequestDto } from './service-requests.dto';
 
 export interface RequestActor {
@@ -89,19 +86,10 @@ export class ServiceRequestsService {
     private readonly vtiger: VtigerService,
   ) {}
 
-  async listAvailableServices(tenantId: string) {
-    const mappings = await this.database.serviceTenant.findMany({
-      where: { tenantId, deletedAt: null },
-      select: { serviceCategory: true },
-    });
-    const enabledCategories = new Set(
-      mappings.map((mapping) => mapping.serviceCategory),
-    );
+  async listAvailableServices() {
     return Promise.all(
       AVAILABLE_SERVICE_CATEGORIES.filter(
-        (serviceCategory) =>
-          serviceCategory !== ServiceCategory.PHONE_CALL &&
-          enabledCategories.has(serviceCategory),
+        (serviceCategory) => serviceCategory !== ServiceCategory.PHONE_CALL,
       ).map(async (serviceCategory) => ({
         serviceCategory,
         available: true,
@@ -231,7 +219,7 @@ export class ServiceRequestsService {
   }
 
   private getCrmTitle(requestId: string, title: string): string {
-    const prefix = `[VOX ${requestId}] `;
+    const prefix = `VOX ${requestId} `;
     return `${prefix}${title}`.slice(0, 100);
   }
 
@@ -466,19 +454,6 @@ export class ServiceRequestsService {
       throw new BadRequestException('The appointment must be in the future.');
     }
 
-    const serviceTenant = await this.database.serviceTenant.findFirst({
-      where: {
-        tenantId: actor.tenantId,
-        serviceCategory: dto.serviceCategory,
-        deletedAt: null,
-      },
-    });
-    if (!serviceTenant) {
-      throw new ForbiddenException(
-        'This service is not enabled for your tenant.',
-      );
-    }
-
     if (idempotencyKey) {
       const existing = await this.database.serviceRequest.findFirst({
         where: { userId: actor.id, idempotencyKey },
@@ -491,7 +466,6 @@ export class ServiceRequestsService {
       data: {
         tenantId: actor.tenantId,
         userId: actor.id,
-        serviceTenantId: serviceTenant.id,
         serviceCategory: dto.serviceCategory,
         title: dto.title.trim(),
         sourceLanguage: dto.sourceLanguage?.trim(),
@@ -707,10 +681,7 @@ export class ServiceRequestsService {
         );
       }
 
-      const documentTitle = `[VOX-DOC:${document.id}] ${filename}`.slice(
-        0,
-        100,
-      );
+      const documentTitle = `${filename}`.slice(0, 100);
       let crmDocumentId = document.vtigerDocumentId;
       if (!crmDocumentId) {
         const existingCrmDocument = await this.queryFirst(
@@ -761,26 +732,6 @@ export class ServiceRequestsService {
         'vTiger could not store this document. Retry with the same Idempotency-Key.',
       );
     }
-  }
-
-  async downloadDocument(
-    actor: RequestActor,
-    requestId: string,
-    documentId: string,
-  ): Promise<VtigerFile> {
-    const document = await this.database.serviceRequestDocument.findFirst({
-      where: {
-        id: documentId,
-        serviceRequestId: requestId,
-        uploadStatus: 'AVAILABLE',
-        vtigerDocumentId: { not: null },
-        serviceRequest: { userId: actor.id, tenantId: actor.tenantId },
-      },
-    });
-    if (!document?.vtigerDocumentId) {
-      throw new NotFoundException('Document not found.');
-    }
-    return this.vtiger.downloadFile(document.vtigerDocumentId);
   }
 
   private async ensureDocumentRelated(
@@ -1026,14 +977,12 @@ export class ServiceRequestsService {
     },
     accountId: string,
   ): Promise<string> {
-    const existing = user.vtigerContactId
-      ? await this.vtiger.retrieve<Record<string, unknown>>(
-          'Contacts',
-          user.vtigerContactId,
-        )
-      : await this.queryFirst(
-          `select id, account_id from Contacts where email = '${this.escapeQuery(user.email)}' and account_id = '${this.escapeQuery(accountId)}';`,
-        );
+    const contactFilter = user.vtigerContactId
+      ? `id = '${this.escapeQuery(user.vtigerContactId)}'`
+      : `email = '${this.escapeQuery(user.email)}'`;
+    const existing = await this.queryFirst(
+      `select id, account_id from Contacts where ${contactFilter} and account_id = '${this.escapeQuery(accountId)}';`,
+    );
     if (!existing) {
       throw new Error(
         `No existing vTiger Contact matches portal user "${user.email}".`,

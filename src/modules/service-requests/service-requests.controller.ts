@@ -7,14 +7,12 @@ import {
   ParseUUIDPipe,
   Post,
   Req,
-  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
-import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { UserAuthGuard } from '../users/middleware';
 import type {
@@ -32,8 +30,8 @@ export class ServiceRequestsController {
   constructor(private readonly serviceRequests: ServiceRequestsService) {}
 
   @Get('services')
-  listAvailableServices(@Req() request: AuthenticatedRequest) {
-    return this.serviceRequests.listAvailableServices(request.user.tenantId);
+  listAvailableServices() {
+    return this.serviceRequests.listAvailableServices();
   }
 
   @Post()
@@ -101,27 +99,5 @@ export class ServiceRequestsController {
       file,
       idempotencyKey,
     );
-  }
-
-  @Get(':requestId/documents/:documentId')
-  async downloadDocument(
-    @Req() request: AuthenticatedRequest,
-    @Param('requestId', ParseUUIDPipe) requestId: string,
-    @Param('documentId', ParseUUIDPipe) documentId: string,
-    @Res() response: Response,
-  ) {
-    const file = await this.serviceRequests.downloadDocument(
-      request.user,
-      requestId,
-      documentId,
-    );
-    const filename = file.filename?.replace(/[\r\n"\\]/g, '_') ?? 'document';
-    response.setHeader('Content-Type', file.contentType);
-    response.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
-    response.setHeader('Content-Length', file.data.byteLength);
-    response.send(Buffer.from(file.data));
   }
 }

@@ -142,7 +142,26 @@ describe('VtigerService', () => {
     await expect(service.me()).rejects.toMatchObject<VtigerApiError>({
       name: 'VtigerApiError',
       code: 'AUTH_ERROR',
-      message: 'Invalid access key',
+      message: 'Invalid access key [me]',
+    });
+  });
+
+  it('includes safe CRM operation context in HTTP failure messages', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ success: false }), { status: 412 }),
+        ),
+    );
+    const service = new VtigerService(config);
+
+    await expect(
+      service.query("select id from Accounts where accountname = 'Example';"),
+    ).rejects.toMatchObject<VtigerApiError>({
+      status: 412,
+      message: 'vTiger request failed with HTTP 412. [query Accounts]',
     });
   });
 });

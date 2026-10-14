@@ -68,8 +68,10 @@ can retry. vTiger status is refreshed on demand, not continuously.
 Failed CRM syncs are retried in the background once per minute, for up to eight
 attempts; the user can also request a manual retry.
 
-Only tenants with an enabled `ServiceTenant` mapping can request a service.
-During CRM sync, the portal tenant must match an existing vTiger Account by
+The same mapped services are available to every tenant; no per-tenant
+`ServiceTenant` activation is required. `PHONE_CALL` remains unavailable until
+its PBX/CRM mapping is implemented. During CRM sync, the portal tenant must
+match an existing vTiger Account by
 account name, and the portal user's email must match an existing Contact linked
 to that Account. Existing stored vTiger IDs are used when present. The
 integration never creates Accounts or Contacts; missing or mismatched client

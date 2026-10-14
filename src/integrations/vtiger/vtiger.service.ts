@@ -20,6 +20,7 @@ export class VtigerService {
     options: VtigerRequestOptions = {},
   ): Promise<T> {
     const response = await this.send(operation, options);
+    const operationContext = this.getOperationContext(operation, options);
     const text = await response.text();
     let payload: unknown;
 
@@ -27,17 +28,17 @@ export class VtigerService {
       payload = text ? JSON.parse(text) : undefined;
     } catch {
       throw new VtigerApiError(
-        'vTiger returned a non-JSON response.',
+        `vTiger ${operationContext} returned a non-JSON response.`,
         response.status,
       );
     }
 
     if (!response.ok) {
-      throw this.toApiError(payload, response.status);
+      throw this.toApiError(payload, response.status, operationContext);
     }
 
     if (this.isRecord(payload) && payload.success === false) {
-      throw this.toApiError(payload, response.status);
+      throw this.toApiError(payload, response.status, operationContext);
     }
 
     if (
@@ -170,7 +171,7 @@ export class VtigerService {
       } catch {
         payload = text;
       }
-      throw this.toApiError(payload, response.status);
+      throw this.toApiError(payload, response.status, 'files_retrieve');
     }
 
     const disposition = response.headers.get('content-disposition');
@@ -262,21 +263,43 @@ export class VtigerService {
     }
   }
 
-  private toApiError(payload: unknown, status: number): VtigerApiError {
+  private toApiError(
+    payload: unknown,
+    status: number,
+    operationContext: string,
+  ): VtigerApiError {
     if (this.isRecord(payload)) {
       const error = this.isRecord(payload.error) ? payload.error : payload;
-      const message =
+      const upstreamMessage =
         typeof error.message === 'string'
           ? error.message
           : `vTiger request failed with HTTP ${status}.`;
+      const message = `${upstreamMessage} [${operationContext}]`;
       const code = typeof error.code === 'string' ? error.code : undefined;
       return new VtigerApiError(message, status, code);
     }
 
     return new VtigerApiError(
-      `vTiger request failed with HTTP ${status}.`,
+      `vTiger request failed with HTTP ${status}. [${operationContext}]`,
       status,
     );
+  }
+
+  private getOperationContext(
+    operation: VtigerOperation,
+    options: VtigerRequestOptions,
+  ): string {
+    const elementType = options.query?.elementType ?? options.form?.elementType;
+    if (typeof elementType === 'string') return `${operation} ${elementType}`;
+
+    if (operation === 'query' && typeof options.query?.query === 'string') {
+      const moduleName = options.query.query.match(
+        /\bfrom\s+([A-Za-z0-9_]+)/i,
+      )?.[1];
+      if (moduleName) return `${operation} ${moduleName}`;
+    }
+
+    return operation;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

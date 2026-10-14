@@ -27,9 +27,6 @@ describe('ServiceRequestsService', () => {
       documents: [],
     };
     const database = {
-      serviceTenant: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'service-tenant-1' }),
-      },
       serviceRequest: {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue(draft),
@@ -49,42 +46,67 @@ describe('ServiceRequestsService', () => {
         data: expect.objectContaining({
           userId: actor.id,
           tenantId: actor.tenantId,
-          serviceTenantId: 'service-tenant-1',
         }),
       }),
     );
     expect(vtiger.me).not.toHaveBeenCalled();
   });
 
-  it('rejects a request when the service is not enabled for the tenant', async () => {
+  it('creates a request without tenant-specific service configuration', async () => {
     const database = {
-      serviceTenant: { findFirst: vi.fn().mockResolvedValue(null) },
       serviceRequest: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue({ id: 'request-1', documents: [] }),
       },
     };
     const service = new ServiceRequestsService(database as never, {} as never);
 
-    await expect(service.create(actor, documentRequest)).rejects.toBeInstanceOf(
-      ForbiddenException,
+    await expect(service.create(actor, documentRequest)).resolves.toMatchObject(
+      {
+        id: 'request-1',
+      },
     );
-    expect(database.serviceRequest.create).not.toHaveBeenCalled();
+    expect(database.serviceRequest.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: actor.id,
+          tenantId: actor.tenantId,
+          serviceCategory: documentRequest.serviceCategory,
+        }),
+      }),
+    );
   });
 
-  it('lists only services enabled for the authenticated tenant', async () => {
-    const database = {
-      serviceTenant: { findMany: vi.fn().mockResolvedValue([]) },
-    };
-    const service = new ServiceRequestsService(database as never, {} as never);
-
-    await expect(
-      service.listAvailableServices(actor.tenantId),
-    ).resolves.toEqual([]);
-    expect(database.serviceTenant.findMany).toHaveBeenCalledWith({
-      where: { tenantId: actor.tenantId, deletedAt: null },
-      select: { serviceCategory: true },
+  it('lists the same mapped services globally without querying tenant mappings', async () => {
+    const database = {};
+    const picklist = (name: string) => ({
+      name,
+      type: { picklistValues: [] },
     });
+    const vtiger = {
+      describe: vi.fn().mockResolvedValue({
+        fields: [
+          picklist('fld_linguasource_2339'),
+          picklist('fld_linguatarget_2341'),
+          picklist('fld_argomento_2343'),
+          picklist('cf_vtcmtraduzioni_quantitespressain'),
+          picklist('fld_consegnagarantita_2345'),
+          picklist('fld_linguarichiesta_2383'),
+        ],
+      }),
+    };
+    const service = new ServiceRequestsService(
+      database as never,
+      vtiger as never,
+    );
+
+    const services = await service.listAvailableServices();
+    expect(services.map(({ serviceCategory }) => serviceCategory)).toEqual([
+      ServiceCategory.DOCUMENTS_TRADUCTION,
+      ServiceCategory.FACE2FACE_VIDEO,
+      ServiceCategory.FACE2FACE_PHYSICAL,
+    ]);
+    expect(vtiger.describe).toHaveBeenCalledTimes(2);
   });
 
   it('rejects phone interpreting until a matching vTiger request module is configured', async () => {
@@ -197,7 +219,7 @@ describe('ServiceRequestsService', () => {
       crmRecordId: null,
       crmSyncStatus: 'PENDING',
       documents: [],
-      user: { ...actor, vtigerContactId: null },
+      user: { ...actor, vtigerContactId: 'contact-1' },
       tenant: {
         id: actor.tenantId,
         name: 'Client tenant',
@@ -236,6 +258,7 @@ describe('ServiceRequestsService', () => {
         }
         return Promise.resolve([]);
       }),
+      retrieve: vi.fn(),
       describe: vi.fn().mockResolvedValue({
         fields: [
           {
@@ -274,6 +297,10 @@ describe('ServiceRequestsService', () => {
         fld_stato_2337: 'NUOVO',
       }),
     );
+    expect(vtiger.query).toHaveBeenCalledWith(
+      expect.stringContaining("id = 'contact-1' and account_id = 'account-1'"),
+    );
+    expect(vtiger.retrieve).not.toHaveBeenCalled();
     expect(
       vtiger.create.mock.calls.some(([module]) =>
         ['Accounts', 'Contacts'].includes(module),
@@ -375,6 +402,11 @@ describe('ServiceRequestsService', () => {
       query: vi.fn().mockImplementation((query: string) => {
         if (query.includes('vtcmtraduzioni')) return Promise.resolve([]);
         if (query.includes('Documents')) return Promise.resolve([]);
+        if (query.includes('Contacts')) {
+          return Promise.resolve([
+            { id: 'contact-1', account_id: 'account-1' },
+          ]);
+        }
         return Promise.resolve([]);
       }),
       create: vi.fn().mockImplementation((module: string) => {
@@ -417,6 +449,7 @@ describe('ServiceRequestsService', () => {
         id: documentId,
         originalName: 'contract.pdf',
       });
+      expect(vtiger.retrieve).not.toHaveBeenCalled();
       expect(events).toEqual([
         'create:vtcmtraduzioni',
         'create:Documents',
